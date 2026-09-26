@@ -20,7 +20,7 @@ jobs:
       ORCA_BACKGROUND_LAUNCH: '1'
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       NODE_OPTIONS: --max-old-space-size=4096
-      ORCA_LOCAL_BUILD_VERSION: 1.4.212-cem555.1
+      ORCA_LOCAL_BUILD_VERSION: 1.4.212+cem555.1
       ORCA_BUILD_COMMIT: ${{ github.sha }}
     defaults:
       run:
