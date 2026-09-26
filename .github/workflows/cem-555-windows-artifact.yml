@@ -45,7 +45,19 @@ jobs:
           git merge-base --is-ancestor d937d22f498505c017634be9bf0540c9fa42e665 HEAD
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           git diff --stat d937d22f498505c017634be9bf0540c9fa42e665 HEAD
-          git diff --exit-code -- package.json pnpm-lock.yaml mobile/package.json mobile/pnpm-lock.yaml
+          git diff --exit-code d937d22f498505c017634be9bf0540c9fa42e665 HEAD -- package.json pnpm-lock.yaml pnpm-workspace.yaml mobile/package.json mobile/pnpm-lock.yaml mobile/pnpm-workspace.yaml
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $allowed = @(
+            '.github/workflows/cem-555-windows-artifact.yml',
+            'src/renderer/src/components/activity/activity-thread-types.ts',
+            'src/renderer/src/components/activity/activity-thread-builder.ts',
+            'src/renderer/src/components/activity/activity-thread-presentation.ts',
+            'src/renderer/src/components/activity/use-agent-pane-threads.ts',
+            'src/renderer/src/components/activity/activity-remote-current-status.test.ts',
+            'tests/e2e/activity-stale-working-status.spec.ts'
+          )
+          $unexpected = @(git diff --name-only d937d22f498505c017634be9bf0540c9fa42e665 HEAD | Where-Object { $_ -notin $allowed })
+          if ($unexpected.Count) { throw "Unexpected release delta: $unexpected" }
       - name: Prove baseline regression and restore correction
         run: |
           $file = 'src/renderer/src/components/activity/activity-thread-presentation.ts'
