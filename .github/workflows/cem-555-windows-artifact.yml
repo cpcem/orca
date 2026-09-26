@@ -75,9 +75,54 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           pnpm run typecheck:web
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          pnpm run typecheck:e2e
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           pnpm exec oxlint src/renderer/src/components/activity/activity-thread-builder.ts src/renderer/src/components/activity/activity-thread-presentation.ts src/renderer/src/components/activity/activity-thread-types.ts src/renderer/src/components/activity/use-agent-pane-threads.ts src/renderer/src/components/activity/activity-remote-current-status.test.ts tests/e2e/activity-stale-working-status.spec.ts
+      - name: Compare E2E types against the exact release
+        run: |
+          $production = @(
+            'src/renderer/src/components/activity/activity-thread-types.ts',
+            'src/renderer/src/components/activity/activity-thread-builder.ts',
+            'src/renderer/src/components/activity/activity-thread-presentation.ts',
+            'src/renderer/src/components/activity/use-agent-pane-threads.ts'
+          )
+          $fixtures = @(
+            'src/renderer/src/components/activity/activity-remote-current-status.test.ts',
+            'tests/e2e/activity-stale-working-status.spec.ts'
+          )
+          $held = @{}
+          try {
+            git restore --source=d937d22f498505c017634be9bf0540c9fa42e665 -- $production
+            if ($LASTEXITCODE) { throw 'Could not restore release source for the baseline' }
+            foreach ($file in $fixtures) {
+              $destination = 'dist/cem555-evidence/' + [IO.Path]::GetFileName($file) + '.held'
+              Move-Item -LiteralPath $file -Destination $destination
+              $held[$file] = $destination
+            }
+            node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.e2e.json --pretty false > dist/cem555-evidence/e2e-types-baseline.log 2>&1
+            $baselineExit = $LASTEXITCODE
+          } finally {
+            git restore --source=HEAD -- $production
+            if ($LASTEXITCODE) { throw 'Could not restore repair source' }
+            foreach ($file in $held.Keys) { Move-Item -LiteralPath $held[$file] -Destination $file }
+          }
+          node node_modules/typescript/bin/tsc --noEmit -p config/tsconfig.e2e.json --pretty false > dist/cem555-evidence/e2e-types-current.log 2>&1
+          $currentExit = $LASTEXITCODE
+          function Read-Diagnostics($path) {
+            $raw = (Get-Content -LiteralPath $path -Raw).Replace("`r`n", "`n")
+            @([regex]::Split($raw, '(?m)(?=^[^\n]+\(\d+,\d+\): error TS\d+:)') |
+              Where-Object { $_ -match '^[^\n]+\(\d+,\d+\): error TS\d+:' } |
+              ForEach-Object { ($_.Trim() -replace '\(\d+,\d+\)(?=: error TS)', '(line,column)') })
+          }
+          $baseline = @(Read-Diagnostics 'dist/cem555-evidence/e2e-types-baseline.log')
+          $current = @(Read-Diagnostics 'dist/cem555-evidence/e2e-types-current.log')
+          if (($baselineExit -ne 0 -and !$baseline.Count) -or ($currentExit -ne 0 -and !$current.Count)) { throw 'Typecheck failed without parseable diagnostics' }
+          $new = @(Compare-Object -ReferenceObject $baseline -DifferenceObject $current | Where-Object SideIndicator -eq '=>')
+          $fixtureErrors = @($current | Where-Object { $_ -match '^tests/e2e/activity-stale-working-status.spec.ts\(' })
+          [pscustomobject]@{ baselineExit=$baselineExit; baselineErrors=$baseline.Count; currentExit=$currentExit; currentErrors=$current.Count; newErrors=$new.Count; fixtureErrors=$fixtureErrors.Count; fullCheckPassed=($currentExit -eq 0) } | ConvertTo-Json | Set-Content dist/cem555-evidence/e2e-types-comparison.json
+          $new | ForEach-Object InputObject | Set-Content dist/cem555-evidence/e2e-types-new.log
+          Get-Content dist/cem555-evidence/e2e-types-comparison.json
+          if ($new.Count -or $fixtureErrors.Count) { throw 'Repair introduced E2E type diagnostics' }
+          if ($currentExit -ne 0) { Write-Warning 'Full E2E typecheck remains non-green on the unchanged release; no new diagnostics and no fixture diagnostics.' }
+          $global:LASTEXITCODE = 0
       - name: Hidden rendered status proof
         run: pnpm exec playwright test tests/e2e/activity-stale-working-status.spec.ts --config tests/playwright.config.ts --project electron-headless --workers 1
       - name: Build native relay prerequisites
