@@ -117,7 +117,11 @@ export type ActivityThreadStatusId = AgentDotState
 /** Single classifier behind grouping, labels, and clear-completed; the only place the
  *  interrupted predicate is spelled. */
 export function activityThreadStatusId(thread: AgentPaneThread): ActivityThreadStatusId {
-  const state = thread.currentAgentState ?? thread.latestEvent?.state ?? 'done'
+  // Expired or unconfirmed working evidence cannot turn an old completion into current Done.
+  if (!thread.currentAgentState && thread.paneEntry?.state === 'working') {
+    return 'unverifiable'
+  }
+  const state = thread.currentAgentState ?? thread.latestEvent?.state ?? 'unverifiable'
   if (!thread.currentAgentState && state === 'done' && thread.latestEvent?.entry.interrupted) {
     return 'interrupted'
   }

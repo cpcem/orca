@@ -157,11 +157,12 @@ export function useAgentPaneThreads(args: {
         {
           events: allEvents,
           liveAgentByPaneKey,
+          paneEntryByPaneKey: storeData.agentStatusByPaneKey,
           generatedTitlesEnabled: storeData.generatedTitlesEnabled
         },
         threadReuseCacheRef.current
       ),
-    [allEvents, liveAgentByPaneKey, storeData.generatedTitlesEnabled]
+    [allEvents, liveAgentByPaneKey, storeData.agentStatusByPaneKey, storeData.generatedTitlesEnabled]
   )
 
   const selectedPaneKeyIsLive =

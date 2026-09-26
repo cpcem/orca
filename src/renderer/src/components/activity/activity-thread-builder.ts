@@ -3,6 +3,7 @@ import {
   paneTitleForEvent,
   statusPreviewForEntry
 } from './activity-thread-presentation'
+import type { AgentStatusEntry } from '../../../../shared/agent-status-types'
 import type {
   ActivityEvent,
   ActivityLiveAgentSnapshot,
@@ -51,6 +52,7 @@ function reuseThreadIfEqual(
     previous.agentType === next.agentType &&
     previous.currentAgentState === next.currentAgentState &&
     previous.currentAgentEntry === next.currentAgentEntry &&
+    previous.paneEntry === next.paneEntry &&
     previous.responsePreview === next.responsePreview &&
     previous.latestTimestamp === next.latestTimestamp &&
     previous.latestEvent === next.latestEvent &&
@@ -67,6 +69,7 @@ export function buildAgentPaneThreads(
   args: {
     events: ActivityEvent[]
     liveAgentByPaneKey: Record<string, ActivityLiveAgentSnapshot>
+    paneEntryByPaneKey?: Record<string, AgentStatusEntry>
     generatedTitlesEnabled?: boolean
   },
   reuseCache?: AgentPaneThreadReuseCache
@@ -86,6 +89,7 @@ export function buildAgentPaneThreads(
         agentType: event.agentType,
         currentAgentState: null,
         currentAgentEntry: null,
+        paneEntry: args.paneEntryByPaneKey?.[paneKey],
         responsePreview: statusPreviewForEntry(event.entry, event.state),
         latestTimestamp: event.timestamp,
         latestEvent: event,
@@ -125,6 +129,7 @@ export function buildAgentPaneThreads(
         agentType: liveAgent.agentType,
         currentAgentState: liveAgent.state,
         currentAgentEntry: liveAgent.entry,
+        paneEntry: args.paneEntryByPaneKey?.[paneKey],
         responsePreview: statusPreviewForEntry(liveAgent.entry, liveAgent.entry.state),
         latestTimestamp: liveAgent.timestamp,
         latestEvent: null,

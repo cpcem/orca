@@ -1,0 +1,110 @@
+name: CEM555 Windows repair artifact
+
+on:
+  push:
+    branches: [cpcem/cem-555-v1-4-212]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cem-555-windows-artifact
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.repository == 'cpcem/orca'
+    runs-on: windows-2022
+    timeout-minutes: 75
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      NODE_OPTIONS: --max-old-space-size=4096
+      ORCA_LOCAL_BUILD_VERSION: 1.4.212-cem555.1
+      ORCA_BUILD_COMMIT: ${{ github.sha }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/setup@v2
+        with:
+          install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+      - name: Install host dependencies
+        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/install-mobile-dependencies
+      - name: Verify exact release ancestry and source delta
+        run: |
+          git merge-base --is-ancestor d937d22f498505c017634be9bf0540c9fa42e665 HEAD
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git diff --stat d937d22f498505c017634be9bf0540c9fa42e665 HEAD
+          git diff --exit-code -- package.json pnpm-lock.yaml mobile/package.json mobile/pnpm-lock.yaml
+      - name: Prove baseline regression and restore correction
+        run: |
+          $file = 'src/renderer/src/components/activity/activity-thread-presentation.ts'
+          New-Item -ItemType Directory -Force dist/cem555-evidence | Out-Null
+          git restore --source=d937d22f498505c017634be9bf0540c9fa42e665 -- $file
+          pnpm exec vitest run --config config/vitest.config.ts --maxWorkers 1 --no-file-parallelism --reporter=json --outputFile=dist/cem555-evidence/baseline.json src/renderer/src/components/activity/activity-remote-current-status.test.ts
+          $baselineExit = $LASTEXITCODE
+          git restore --source=HEAD -- $file
+          if ($baselineExit -ne 1) { throw "Expected baseline regression failure; got $baselineExit" }
+          $report = Get-Content dist/cem555-evidence/baseline.json -Raw | ConvertFrom-Json
+          if ($report.numFailedTests -ne 4 -or $report.numPassedTests -ne 2) { throw 'Baseline failed for an unexpected reason' }
+      - name: Focused renderer tests and types
+        run: |
+          pnpm exec vitest run --config config/vitest.config.ts --maxWorkers 1 --no-file-parallelism src/renderer/src/components/activity/activity-remote-current-status.test.ts src/renderer/src/runtime/mirrored-agent-status-clock-skew.test.ts src/renderer/src/runtime/web-session-tabs-sync-agent-status.test.ts src/renderer/src/components/activity/activity-thread-grouping.status-order.test.ts
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pnpm run typecheck:web
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pnpm run typecheck:e2e
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pnpm exec oxlint src/renderer/src/components/activity/activity-thread-builder.ts src/renderer/src/components/activity/activity-thread-presentation.ts src/renderer/src/components/activity/activity-thread-types.ts src/renderer/src/components/activity/use-agent-pane-threads.ts src/renderer/src/components/activity/activity-remote-current-status.test.ts tests/e2e/activity-stale-working-status.spec.ts
+      - name: Hidden rendered status proof
+        run: pnpm exec playwright test tests/e2e/activity-stale-working-status.spec.ts --config tests/playwright.config.ts --project electron-headless --workers 1
+      - name: Build native relay prerequisites
+        run: |
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=x64
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node config/scripts/build-windows-process-tree-relay-addon.mjs --arch=arm64
+      - name: Build production app
+        run: pnpm run build:release
+        env:
+          ORCA_REQUIRE_RELAY_NATIVE_ADDONS: x64,arm64
+      - name: Package without publishing
+        run: |
+          node config/scripts/ensure-native-runtime.mjs --runtime=electron
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pnpm exec electron-builder --config config/electron-builder.config.cjs --win --x64 --publish never
+      - name: Record artifact identity
+        run: |
+          New-Item -ItemType Directory -Force dist/cem555-evidence | Out-Null
+          $files = @('dist/orca-windows-setup.exe', 'dist/win-unpacked/Orca.exe', 'dist/win-unpacked/resources/app.asar')
+          $proof = foreach ($file in $files) {
+            $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $file
+            [pscustomobject]@{ path=$file; sha256=$hash.Hash; signature=if($file.EndsWith('.exe')){(Get-AuthenticodeSignature -LiteralPath $file).Status.ToString()}else{'not-applicable'} }
+          }
+          [pscustomobject]@{ source=$env:GITHUB_SHA; baseline='d937d22f498505c017634be9bf0540c9fa42e665'; version=$env:ORCA_LOCAL_BUILD_VERSION; files=$proof; installed=$false } | ConvertTo-Json -Depth 5 | Set-Content dist/cem555-evidence/build.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cem555-test-evidence-${{ github.sha }}
+          path: |
+            test-results
+            dist/cem555-evidence
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cem555-windows-${{ github.sha }}
+          path: |
+            dist/orca-windows-setup.exe
+            dist/win-unpacked
+            dist/cem555-evidence
+          compression-level: 1
+          retention-days: 14

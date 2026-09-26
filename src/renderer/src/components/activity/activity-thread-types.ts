@@ -51,6 +51,8 @@ export type AgentPaneThread = {
   agentType: AgentType
   currentAgentState: ActivityLiveAgentState | null
   currentAgentEntry: AgentStatusEntry | null
+  /** Current pane evidence, including rows that no longer establish liveness. */
+  paneEntry?: AgentStatusEntry
   responsePreview: string
   latestTimestamp: number
   latestEvent: ActivityEvent | null
