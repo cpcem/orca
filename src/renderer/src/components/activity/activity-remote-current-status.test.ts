@@ -55,8 +55,7 @@ function ompEntry(overrides: Partial<AgentStatusEntry>): AgentStatusEntry {
       {
         state: 'done',
         prompt: 'first pass finished',
-        startedAt: NOW - 60_000,
-        observedAt: NOW - 60_000
+        startedAt: NOW - 60_000
       }
     ],
     ...overrides
@@ -78,8 +77,7 @@ describe('remote activity current status versus a completion receipt', () => {
           {
             state: 'done',
             prompt: 'first pass finished',
-            startedAt: staleAt - 60_000,
-            observedAt: staleAt - 60_000
+            startedAt: staleAt - 60_000
           }
         ]
       }),

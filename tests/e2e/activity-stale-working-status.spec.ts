@@ -36,8 +36,7 @@ test('activity distinguishes fresh, stale, unconfirmed and completed turns', asy
             stateHistory: [{
               state: 'done',
               prompt: 'CEM555 isolated status fixture',
-              startedAt: at - 60_000,
-              observedAt: at - 60_000
+              startedAt: at - 60_000
             }]
           }
         },
